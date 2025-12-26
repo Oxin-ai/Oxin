@@ -35,7 +35,7 @@ services:
       - "--config"
       - "/etc/ngrok.yml"
     volumes:
-      - ./ngrok-config.yml:/etc/ngrok.yml
+      - /mnt/g/Saas/bolna/local_setup/ngrok-config.yml:/etc/ngrok.yml:ro
     ports:
       - 4040:4040
 
