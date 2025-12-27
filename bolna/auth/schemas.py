@@ -3,6 +3,7 @@ from typing import Optional
 
 
 class UserSignup(BaseModel):
+    tenant_name: str
     email: EmailStr
     password: str
 
@@ -20,6 +21,7 @@ class Token(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: str
+    role: str
     is_active: bool
     created_at: str
 

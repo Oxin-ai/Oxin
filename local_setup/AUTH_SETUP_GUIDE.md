@@ -83,7 +83,7 @@ MySQL init process done. Ready for start up.
 
 ### Step 4: Initialize Database Tables
 
-Create the authentication tables (users table):
+Create the authentication tables (tenants and users tables):
 
 ```bash
 cd local_setup
@@ -95,12 +95,23 @@ docker-compose exec bolna-app python -m bolna.auth.init_db
 INFO: Database tables created successfully
 ```
 
-This creates the `users` table with the following structure:
+This creates the following tables:
+
+**`tenants` table:**
+- `id` (Primary Key)
+- `name` (Required)
+- `slug` (Unique, Indexed, URL-friendly)
+- `is_active` (Default: true)
+- `created_at` (Timestamp)
+
+**`users` table:**
 - `id` (Primary Key)
 - `email` (Unique, Indexed)
 - `hashed_password`
-- `is_active`
-- `created_at`
+- `tenant_id` (Foreign Key → tenants.id, Required)
+- `role` (Default: "user")
+- `is_active` (Default: true)
+- `created_at` (Timestamp)
 
 ## Running the Application
 
@@ -134,16 +145,21 @@ The application should be accessible at:
 
 ## Testing Authentication APIs
 
-### Step 7: Test User Signup
+### Step 7: Test User Signup (with Tenant Creation)
 
-Create a new user account:
+Create a new tenant and user account. The signup process automatically:
+1. Creates a new tenant with the provided tenant name
+2. Generates a unique slug from the tenant name
+3. Creates the first user with role "owner"
+4. Returns a JWT token with tenant context
 
 **Using curl:**
 ```bash
 curl -X POST "http://localhost:5001/auth/signup" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "user@example.com",
+    "tenant_name": "Acme Corporation",
+    "email": "owner@acme.com",
     "password": "SecurePassword123!"
   }'
 ```
@@ -155,7 +171,8 @@ curl -X POST "http://localhost:5001/auth/signup" \
 4. Body (raw JSON):
 ```json
 {
-  "email": "user@example.com",
+  "tenant_name": "Acme Corporation",
+  "email": "owner@acme.com",
   "password": "SecurePassword123!"
 }
 ```
@@ -163,27 +180,36 @@ curl -X POST "http://localhost:5001/auth/signup" \
 **Expected Response (201 Created):**
 ```json
 {
-  "id": 1,
-  "email": "user@example.com",
-  "is_active": true,
-  "created_at": "2025-12-27T04:55:10.123456"
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJlbWFpbCI6Im93bmVyQGFjbWUuY29tIiwidGVuYW50X2lkIjoxLCJyb2xlIjoib3duZXIiLCJleHAiOjE3MDUwNzI3MTAsImlhdCI6MTcwNTA2OTEwMH0...",
+  "token_type": "bearer"
 }
 ```
 
+**JWT Token Payload (decoded):**
+The JWT token contains:
+- `user_id`: User's unique identifier
+- `email`: User's email address
+- `tenant_id`: Tenant's unique identifier
+- `role`: User's role (will be "owner" for signup)
+- `exp`: Token expiration timestamp
+- `iat`: Token issued at timestamp
+
 **Error Cases:**
 - **400 Bad Request**: Email already registered
-- **422 Validation Error**: Invalid email format or missing fields
+- **422 Validation Error**: Invalid email format or missing fields (tenant_name, email, password)
+
+**Note:** Each signup creates a new tenant. If you want to add users to an existing tenant, use a separate endpoint (not included in this implementation).
 
 ### Step 8: Test User Login
 
-Authenticate and get JWT token:
+Authenticate and get JWT token with tenant context:
 
 **Using curl:**
 ```bash
 curl -X POST "http://localhost:5001/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "user@example.com",
+    "email": "owner@acme.com",
     "password": "SecurePassword123!"
   }'
 ```
@@ -195,7 +221,7 @@ curl -X POST "http://localhost:5001/auth/login" \
 4. Body (raw JSON):
 ```json
 {
-  "email": "user@example.com",
+  "email": "owner@acme.com",
   "password": "SecurePassword123!"
 }
 ```
@@ -203,17 +229,66 @@ curl -X POST "http://localhost:5001/auth/login" \
 **Expected Response (200 OK):**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJlbWFpbCI6Im93bmVyQGFjbWUuY29tIiwidGVuYW50X2lkIjoxLCJyb2xlIjoib3duZXIiLCJleHAiOjE3MDUwNzI3MTAsImlhdCI6MTcwNTA2OTEwMH0...",
   "token_type": "bearer"
 }
 ```
+
+**JWT Token Payload (decoded):**
+The JWT token contains:
+- `user_id`: User's unique identifier
+- `email`: User's email address
+- `tenant_id`: User's tenant identifier
+- `role`: User's role (e.g., "owner", "user")
+- `exp`: Token expiration timestamp
+- `iat`: Token issued at timestamp
 
 **Error Cases:**
 - **401 Unauthorized**: Incorrect email or password
 - **403 Forbidden**: User account is inactive
 - **422 Validation Error**: Invalid email format or missing fields
 
-### Step 9: Test Protected Endpoints
+### Step 9: Verify JWT Token Contains Tenant Context
+
+You can decode and verify the JWT token to confirm it contains tenant information:
+
+**Using Online JWT Decoder:**
+1. Copy the `access_token` from the signup/login response
+2. Visit https://jwt.io
+3. Paste the token in the "Encoded" section
+4. Verify the payload contains:
+   - `user_id`
+   - `email`
+   - `tenant_id` (should be present)
+   - `role` (should be "owner" for signup)
+
+**Using Python (in container):**
+```bash
+# Access container shell
+docker-compose exec bolna-app python
+
+# In Python shell:
+from bolna.auth.security import decode_access_token
+token = "your_token_here"
+payload = decode_access_token(token)
+print(payload)
+# Should show: {'user_id': 1, 'email': 'owner@acme.com', 'tenant_id': 1, 'role': 'owner', 'exp': ..., 'iat': ...}
+```
+
+**Using curl with jq (if installed):**
+```bash
+# Login and extract token
+RESPONSE=$(curl -s -X POST "http://localhost:5001/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "owner@acme.com", "password": "SecurePassword123!"}')
+
+TOKEN=$(echo $RESPONSE | jq -r '.access_token')
+
+# Decode token (requires base64 and jq)
+echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq .
+```
+
+### Step 10: Test Protected Endpoints
 
 Use the JWT token to access protected routes:
 
@@ -252,26 +327,62 @@ curl -X POST "http://localhost:5001/agent" \
 - **401 Unauthorized**: Missing or invalid token
 - **403 Forbidden**: User account is inactive
 
+**Note:** The JWT token now includes `tenant_id` and `role` which can be used for tenant isolation and role-based access control in future implementations.
+
 ## Complete Test Flow Example
 
-Here's a complete test flow using curl:
+Here's a complete test flow using curl with tenant support:
 
 ```bash
-# 1. Signup
-curl -X POST "http://localhost:5001/auth/signup" \
+# 1. Signup (creates tenant and user, returns JWT token)
+SIGNUP_RESPONSE=$(curl -s -X POST "http://localhost:5001/auth/signup" \
   -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "password": "testpass123"}'
+  -d '{
+    "tenant_name": "Test Company",
+    "email": "test@example.com",
+    "password": "testpass123"
+  }')
 
-# 2. Login and save token
-RESPONSE=$(curl -s -X POST "http://localhost:5001/auth/login" \
+echo "Signup Response: $SIGNUP_RESPONSE"
+
+# Extract token from signup response
+TOKEN=$(echo $SIGNUP_RESPONSE | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
+echo "Token: $TOKEN"
+
+# 2. Login (alternative way to get token)
+LOGIN_RESPONSE=$(curl -s -X POST "http://localhost:5001/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email": "test@example.com", "password": "testpass123"}')
 
-TOKEN=$(echo $RESPONSE | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
+echo "Login Response: $LOGIN_RESPONSE"
+
+# Extract token from login response
+TOKEN=$(echo $LOGIN_RESPONSE | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
 
 # 3. Use token to access protected endpoint
 curl -X GET "http://localhost:5001/all" \
   -H "Authorization: Bearer $TOKEN"
+
+# 4. Verify token contains tenant_id (using Python in container)
+docker-compose exec bolna-app python -c "
+from bolna.auth.security import decode_access_token
+import sys
+token = sys.argv[1]
+payload = decode_access_token(token)
+print('Token Payload:', payload)
+print('Tenant ID:', payload.get('tenant_id'))
+print('Role:', payload.get('role'))
+" "$TOKEN"
+```
+
+**Expected Output:**
+```
+Signup Response: {"access_token":"eyJ...","token_type":"bearer"}
+Token: eyJ...
+Login Response: {"access_token":"eyJ...","token_type":"bearer"}
+Token Payload: {'user_id': 1, 'email': 'test@example.com', 'tenant_id': 1, 'role': 'owner', 'exp': ..., 'iat': ...}
+Tenant ID: 1
+Role: owner
 ```
 
 ## Troubleshooting
@@ -291,6 +402,66 @@ curl -X GET "http://localhost:5001/all" \
 - Ensure MySQL is fully initialized before running init_db
 - Check MySQL credentials match in `.env` and `docker-compose.yml`
 
+### Issue: "Access denied for user 'bolna_user'@'...' (using password: YES)"
+
+**Solution:**
+- This error occurs when the MySQL user doesn't have permissions from the Docker network
+- The user might exist but only have `localhost` permissions, not network permissions
+- **Quick Fix:** Run the provided fix script:
+  ```bash
+  # On Windows (PowerShell)
+  cd local_setup
+  .\fix_mysql_permissions.ps1
+  
+  # On Linux/Mac
+  cd local_setup
+  chmod +x fix_mysql_permissions.sh
+  ./fix_mysql_permissions.sh
+  ```
+- **Manual Fix:** Connect to MySQL as root and grant permissions:
+  ```bash
+  # Connect to MySQL container
+  docker-compose exec mysql mysql -uroot -prootpassword
+  
+  # In MySQL prompt, run:
+  CREATE USER IF NOT EXISTS 'bolna_user'@'%' IDENTIFIED BY 'bolna_password';
+  GRANT ALL PRIVILEGES ON `bolna`.* TO 'bolna_user'@'%';
+  CREATE USER IF NOT EXISTS 'bolna_user'@'localhost' IDENTIFIED BY 'bolna_password';
+  GRANT ALL PRIVILEGES ON `bolna`.* TO 'bolna_user'@'localhost';
+  FLUSH PRIVILEGES;
+  EXIT;
+  
+  # Restart the application
+  docker-compose restart bolna-app
+  ```
+- **Verify credentials:**
+  ```bash
+  # Check what user/password the app is trying to use
+  docker-compose exec bolna-app env | grep MYSQL
+  
+  # Test MySQL connection manually (after database is created)
+  docker-compose exec mysql mysql -u bolna_user -pbolna_password bolna -e "SELECT 1;"
+  ```
+
+### Issue: "Access denied for user 'root'@'...' (using password: YES)"
+
+**Solution:**
+- This error occurs when MySQL credentials don't match
+- The application is trying to use `root` user but the password is incorrect
+- **Recommended Fix:** Use the default `bolna_user` instead of `root`:
+  1. Check your `.env` file in `local_setup/` directory
+  2. Ensure it has:
+     ```env
+     MYSQL_USER=bolna_user
+     MYSQL_PASSWORD=bolna_password
+     ```
+  3. Remove or comment out any `MYSQL_USER=root` line
+  4. Restart the container: `docker-compose restart bolna-app`
+- **Alternative:** If you must use `root`:
+  1. Set `MYSQL_USER=root` in `.env`
+  2. Set `MYSQL_PASSWORD` to match `MYSQL_ROOT_PASSWORD` (default: `rootpassword`)
+  3. Restart: `docker-compose restart bolna-app`
+
 ### Issue: "JWT_SECRET environment variable is required"
 
 **Solution:**
@@ -302,6 +473,14 @@ curl -X GET "http://localhost:5001/all" \
 **Solution:**
 - This is expected if the email already exists
 - Use a different email or delete the existing user from the database
+- Note: Each signup creates a new tenant. If you want to add users to an existing tenant, you'll need a separate endpoint (not included in this implementation)
+
+### Issue: Tenant slug conflicts
+
+**Solution:**
+- The system automatically handles slug conflicts by appending numbers (e.g., "acme", "acme-1", "acme-2")
+- Slugs are generated from tenant names and made URL-friendly
+- If you see duplicate slug errors, check the database for existing tenants
 
 ### Issue: "401 Unauthorized" on protected endpoints
 
@@ -351,8 +530,26 @@ docker-compose ps
 
 ### Public Endpoints (No Authentication Required)
 
-- `POST /auth/signup` - Create new user account
+- `POST /auth/signup` - Create new tenant and user account
+  - **Request Body:**
+    ```json
+    {
+      "tenant_name": "string (required)",
+      "email": "string (required, valid email)",
+      "password": "string (required)"
+    }
+    ```
+  - **Response:** JWT token with `user_id`, `email`, `tenant_id`, and `role` (owner)
+  
 - `POST /auth/login` - Authenticate and get JWT token
+  - **Request Body:**
+    ```json
+    {
+      "email": "string (required, valid email)",
+      "password": "string (required)"
+    }
+    ```
+  - **Response:** JWT token with `user_id`, `email`, `tenant_id`, and `role`
 
 ### Protected Endpoints (Require JWT Token)
 
@@ -362,7 +559,9 @@ docker-compose ps
 - `DELETE /agent/{agent_id}` - Delete agent
 - `GET /all` - Get all agents
 
-**Note:** All protected endpoints require the `Authorization: Bearer <token>` header.
+**Note:** 
+- All protected endpoints require the `Authorization: Bearer <token>` header
+- JWT tokens now include `tenant_id` and `role` for tenant isolation and role-based access control
 
 ## Security Notes
 
@@ -372,15 +571,53 @@ docker-compose ps
 4. **Token Expiry**: Adjust `JWT_EXPIRE_MINUTES` based on your security requirements
 5. **Database**: Use strong MySQL passwords in production
 
+## Testing Multi-Tenancy
+
+To verify multi-tenancy is working correctly:
+
+1. **Create Multiple Tenants:**
+   ```bash
+   # Tenant 1
+   curl -X POST "http://localhost:5001/auth/signup" \
+     -H "Content-Type: application/json" \
+     -d '{"tenant_name": "Company A", "email": "owner@companya.com", "password": "pass123"}'
+   
+   # Tenant 2
+   curl -X POST "http://localhost:5001/auth/signup" \
+     -H "Content-Type: application/json" \
+     -d '{"tenant_name": "Company B", "email": "owner@companyb.com", "password": "pass123"}'
+   ```
+
+2. **Verify Different Tenant IDs:**
+   - Login with each user and decode their JWT tokens
+   - Confirm each token has a different `tenant_id`
+   - Verify each user has `role: "owner"`
+
+3. **Check Database:**
+   ```bash
+   # Access MySQL container
+   docker-compose exec mysql mysql -u bolna_user -pbolna_password bolna
+   
+   # View tenants
+   SELECT * FROM tenants;
+   
+   # View users with their tenant
+   SELECT u.id, u.email, u.role, u.tenant_id, t.name as tenant_name 
+   FROM users u 
+   JOIN tenants t ON u.tenant_id = t.id;
+   ```
+
 ## Next Steps
 
 After successful authentication setup:
 
 1. Integrate authentication into your frontend application
 2. Implement token refresh mechanism (if needed)
-3. Add role-based access control (RBAC) if required
-4. Set up proper logging and monitoring
-5. Configure production database with proper backups
+3. Add tenant middleware to enforce tenant isolation on protected routes
+4. Implement role-based access control (RBAC) using the `role` field
+5. Add endpoints to manage users within a tenant (add users, change roles)
+6. Set up proper logging and monitoring
+7. Configure production database with proper backups
 
 ---
 
