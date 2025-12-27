@@ -32,7 +32,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     huggingface-hub \
     numpy \
     tqdm \
-    requests
+    requests \
+    sqlalchemy \
+    pymysql \
+    bcrypt \
+    python-jose[cryptography] \
+    email-validator
 
 # Install bolna package with verbose output for debugging
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -40,8 +45,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     (echo "Failed to install bolna package. See error above." && exit 1)
 
 # Copy application files
-COPY quickstart_server.py /app/
-COPY presets /app/presets
+COPY local_setup/quickstart_server.py /app/
+COPY local_setup/presets /app/presets
+# Copy local bolna package to override installed package
+COPY bolna /app/bolna
 
 EXPOSE 5001
 

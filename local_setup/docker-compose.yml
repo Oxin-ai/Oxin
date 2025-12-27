@@ -1,19 +1,41 @@
-version: '3'
-
 services:
+
+  # MySQL database service
+  mysql:
+    image: mysql:8.0
+    # Port not exposed externally - services communicate via Docker network
+    # If you need external access, uncomment and use a different port:
+    # ports:
+    #   - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DB:-bolna}
+      MYSQL_USER: ${MYSQL_USER:-bolna_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-bolna_password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # main bolna service
   bolna-app:
     build:
-      context: .
-      dockerfile: dockerfiles/bolna_server.Dockerfile
+      context: ..
+      dockerfile: local_setup/dockerfiles/bolna_server.Dockerfile
     image: bolna-app:latest  # This will tag the built image
     ports:
       - "5001:5001"
     depends_on:
       - redis
+      - mysql
     env_file:
       - .env
+    environment:
+      # Override MYSQL_HOST to use Docker service name (overrides .env file)
+      MYSQL_HOST: mysql
     volumes:
       - ../agent_data:/app/agent_data
       - $HOME/.aws/credentials:/root/.aws/credentials:ro
@@ -67,3 +89,6 @@ services:
       - bolna-app
     env_file:
       - .env
+
+volumes:
+  mysql_data:

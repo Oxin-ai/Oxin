@@ -2,7 +2,8 @@ import os
 import asyncio
 import uuid
 import traceback
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query,Body
+import json
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import redis.asyncio as redis
 from dotenv import load_dotenv
@@ -12,6 +13,8 @@ from bolna.helpers.logger_config import configure_logger
 from bolna.models import *
 from bolna.llms import LiteLLM
 from bolna.agent_manager.assistant_manager import AssistantManager
+from bolna.auth import auth_router, get_current_user
+from bolna.auth.models import User
 
 load_dotenv()
 logger = configure_logger(__name__)
@@ -30,6 +33,9 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+# Include auth routes
+app.include_router(auth_router)
+
 
 class CreateAgentPayload(BaseModel):
     agent_config: AgentModel
@@ -37,7 +43,7 @@ class CreateAgentPayload(BaseModel):
 
 
 @app.get("/agent/{agent_id}")
-async def get_agent(agent_id: str):
+async def get_agent(agent_id: str, current_user: User = Depends(get_current_user)):
     """Fetches an agent's information by ID."""
     try:
         agent_data = await redis_client.get(agent_id)
@@ -53,7 +59,7 @@ async def get_agent(agent_id: str):
 
 
 @app.post("/agent")
-async def create_agent(agent_data: CreateAgentPayload):
+async def create_agent(agent_data: CreateAgentPayload, current_user: User = Depends(get_current_user)):
     agent_uuid = str(uuid.uuid4())
     data_for_db = agent_data.agent_config.model_dump()
     data_for_db["assistant_status"] = "seeding"
@@ -83,7 +89,7 @@ async def create_agent(agent_data: CreateAgentPayload):
 
 
 @app.put("/agent/{agent_id}")
-async def edit_agent(agent_id: str, agent_data: CreateAgentPayload = Body(...)):
+async def edit_agent(agent_id: str, agent_data: CreateAgentPayload = Body(...), current_user: User = Depends(get_current_user)):
     """Edits an existing agent based on the provided agent_id."""
     try:
 
@@ -133,7 +139,7 @@ async def edit_agent(agent_id: str, agent_data: CreateAgentPayload = Body(...)):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.delete("/agent/{agent_id}")
-async def delete_agent(agent_id: str):
+async def delete_agent(agent_id: str, current_user: User = Depends(get_current_user)):
     """Deletes an agent by ID."""
     try:
         agent_exists = await redis_client.exists(agent_id)
@@ -149,7 +155,7 @@ async def delete_agent(agent_id: str):
 
 
 @app.get("/all")
-async def get_all_agents():
+async def get_all_agents(current_user: User = Depends(get_current_user)):
     """Fetches all agents stored in Redis."""
     try:
 
