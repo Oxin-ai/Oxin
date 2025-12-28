@@ -6,6 +6,8 @@ import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from bolna.auth.database import Base, engine, MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB
+from bolna.auth.models import User, Tenant  # Import auth models
+from bolna.agent_management.models import Agent, AgentConfiguration, AgentPrompt  # Import agent models
 from bolna.helpers.logger_config import configure_logger
 from urllib.parse import quote_plus
 
@@ -16,7 +18,7 @@ def create_database_if_not_exists():
     """Create the database if it doesn't exist."""
     try:
         # Use root user to create database (has CREATE DATABASE permission)
-        MYSQL_ROOT_PASSWORD = os.getenv("MYSQL_ROOT_PASSWORD", "rootpassword")
+        MYSQL_ROOT_PASSWORD = os.getenv("MYSQL_ROOT_PASSWORD", "StrongPassword123")
         encoded_root = quote_plus("root")
         encoded_root_password = quote_plus(MYSQL_ROOT_PASSWORD)
         server_url = f"mysql+pymysql://{encoded_root}:{encoded_root_password}@{MYSQL_HOST}:{MYSQL_PORT}"
@@ -38,7 +40,8 @@ def create_database_if_not_exists():
         server_engine.dispose()
     except Exception as e:
         logger.error(f"Error creating database: {e}", exc_info=True)
-        raise
+        # Don't raise - continue with table creation even if database creation fails
+        pass
 
 
 def init_db():
@@ -52,7 +55,8 @@ def init_db():
         logger.info("Database tables created successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {e}", exc_info=True)
-        raise
+        # Don't raise - let the application start even if DB init fails
+        pass
 
 
 if __name__ == "__main__":
