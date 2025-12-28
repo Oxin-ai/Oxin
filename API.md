@@ -134,3 +134,7 @@ Retrieves all agents from the system.
     }
   ]
 }
+
+
+docker exec -it local_setup-mysql-1 \
+  mysql -u root -p oxin_db

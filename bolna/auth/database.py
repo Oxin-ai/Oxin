@@ -7,15 +7,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # MySQL database configuration from environment variables
-MYSQL_USER = os.getenv("MYSQL_USER", "root")
-MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
-# Default to 'localhost' for local development
-# docker-compose.yml sets MYSQL_HOST=mysql for Docker environment (overrides .env)
+MYSQL_USER = "root"
+MYSQL_PASSWORD = os.getenv("MYSQL_ROOT_PASSWORD", "StrongPassword123")
 MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
 MYSQL_PORT = os.getenv("MYSQL_PORT", "3306")
-MYSQL_DB = os.getenv("MYSQL_DB", "bolna")
+MYSQL_DB = os.getenv("MYSQL_DATABASE", "oxin_db")
 
 # Create SQLAlchemy database URL
+print(f"Connecting to MySQL: {MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}")
 SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
 
 # Create engine with connection pooling for production

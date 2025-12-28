@@ -3,15 +3,11 @@ services:
   # MySQL database service
   mysql:
     image: mysql:8.0
-    # Port not exposed externally - services communicate via Docker network
-    # If you need external access, uncomment and use a different port:
-    # ports:
-    #   - "3307:3306"
+    ports:
+      - "3307:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
-      MYSQL_DATABASE: ${MYSQL_DB:-bolna}
-      MYSQL_USER: ${MYSQL_USER:-bolna_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-bolna_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-StrongPassword123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-oxin_db}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
