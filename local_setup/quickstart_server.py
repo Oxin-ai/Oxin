@@ -15,8 +15,10 @@ from bolna.llms import LiteLLM
 from bolna.agent_manager.assistant_manager import AssistantManager
 from bolna.auth import auth_router, get_current_user, get_db
 from bolna.auth.models import User
+from bolna.auth.init_db import init_db
 from bolna.agent_management import agent_router
 from bolna.agent_management.service import AgentService
+from bolna.voice_management import voice_router
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -27,6 +29,9 @@ redis_client = redis.Redis.from_pool(redis_pool)
 active_websockets: List[WebSocket] = []
 
 app = FastAPI()
+
+# Initialize database on startup
+init_db()
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,6 +45,8 @@ app.add_middleware(
 app.include_router(auth_router)
 # Include agent management routes
 app.include_router(agent_router)
+# Include voice management routes
+app.include_router(voice_router)
 
 
 # Agent management endpoints are now handled by agent_router

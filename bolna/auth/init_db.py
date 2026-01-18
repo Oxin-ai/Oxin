@@ -8,6 +8,7 @@ from sqlalchemy.exc import OperationalError
 from bolna.auth.database import Base, engine, MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB
 from bolna.auth.models import User, Tenant  # Import auth models
 from bolna.agent_management.models import Agent, AgentConfiguration, AgentPrompt  # Import agent models
+from bolna.voice_management.models import Voice  # Import voice models
 from bolna.helpers.logger_config import configure_logger
 from urllib.parse import quote_plus
 
@@ -53,6 +54,11 @@ def init_db():
         # Then create all tables
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")
+        
+        # Initialize voice data
+        from bolna.voice_management.init_data import init_voice_data
+        init_voice_data()
+        
     except Exception as e:
         logger.error(f"Error initializing database: {e}", exc_info=True)
         # Don't raise - let the application start even if DB init fails

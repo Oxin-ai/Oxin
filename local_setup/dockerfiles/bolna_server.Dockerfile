@@ -47,6 +47,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy application files
 COPY local_setup/quickstart_server.py /app/
 COPY local_setup/presets /app/presets
+COPY seed_voices.py /app/
 # Copy local bolna package to override installed package
 COPY bolna /app/bolna
 
@@ -60,10 +61,20 @@ echo "MySQL is ready. Initializing database..."\n\
 python -c "\n\
 from bolna.auth.models import User, Tenant\n\
 from bolna.agent_management.models import Agent, AgentConfiguration, AgentPrompt\n\
+from bolna.voice_management.models import Voice\n\
 from bolna.auth.database import Base, engine\n\
 Base.metadata.create_all(bind=engine)\n\
 print(\"All tables created successfully\")\n\
 "\n\
+echo "Seeding voices..."\n\
+python -c "\n\
+from bolna.auth.database import SessionLocal, engine\n\
+from bolna.voice_management.models import Voice\n\
+Voice.__table__.drop(engine, checkfirst=True)\n\
+Voice.__table__.create(engine)\n\
+print(\"Voice table recreated\")\n\
+"\n\
+python seed_voices.py\n\
 echo "Database initialized. Starting server..."\n\
 uvicorn quickstart_server:app --host 0.0.0.0 --port 5001' > /app/start.sh && \
     chmod +x /app/start.sh
